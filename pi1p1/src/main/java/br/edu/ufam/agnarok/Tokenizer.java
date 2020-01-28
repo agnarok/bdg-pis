@@ -31,9 +31,10 @@ public class Tokenizer {
     List<String> tokens = new ArrayList<>();
     StringTokenizer itr = new StringTokenizer(input);
     while (itr.hasMoreTokens()) {
-      String w = PATTERN.matcher(itr.nextToken().toLowerCase()).replaceAll("");
-      if (w.length() != 0) {
-        tokens.add(w);
+      String aux = itr.nextToken().toLowerCase();
+      boolean w = PATTERN.matches("[A-Za-z]+",aux);
+      if (w) {
+        tokens.add(aux);
       }
     }
 
