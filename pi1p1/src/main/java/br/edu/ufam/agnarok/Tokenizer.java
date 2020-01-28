@@ -25,7 +25,7 @@ import java.util.regex.Pattern;
  * Tokenizer so that we have a consistent definition of a "word".
  */
 public class Tokenizer {
-  private static final Pattern PATTERN = Pattern.compile("(^[^a-z]+|[^a-z]+$)");
+  private static final Pattern PATTERN = Pattern.compile("[A-Za-z]+");
 
   public static List<String> tokenize(String input) {
     List<String> tokens = new ArrayList<>();
