@@ -16,7 +16,7 @@
 
 package  br.edu.ufam.agnarok;
 
-import io.bespin.java.util.Tokenizer;
+//import Tokenizer;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.conf.Configured;
 import org.apache.hadoop.fs.FileSystem;
