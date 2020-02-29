@@ -1,3 +1,6 @@
+from matplotlib.pyplot import figure
+import numpy as np
+import matplotlib.pyplot as plt
 from cassandra.cluster import Cluster
 from tqdm import tqdm
 
@@ -76,10 +79,11 @@ def create_schema(host, port, keyspace):
     cursor.execute(f'''create table if not exists {keyspace}.products
     (
       id int,
-      asin varchar PRIMARY KEY,
+      asin varchar,
       title varchar,
       group varchar,
-      salesrank int
+      salesrank int,
+      PRIMARY KEY (group,asin)
     );''')
 
     cursor.execute(f'''create table if not exists {keyspace}.similars
@@ -106,14 +110,15 @@ def create_schema(host, port, keyspace):
 
     cursor.execute(f'''create table if not exists {keyspace}.reviews
     (
-      id int PRIMARY KEY,
+      id int,
       date date,
       customer varchar,
       rating int,
       votes int,
       helpful int,
-      product_asin varchar
-    );
+      product_asin varchar,
+      PRIMARY KEY (customer,product_asin,id,rating,helpful)
+    )
     ''')
 
 
@@ -138,7 +143,10 @@ def populate_database(host, port, keyspace, file_path):
         if value:
             for key in necessaryKeys:
                 if key not in list(value.keys()):
-                    value[key] = "null"
+                    if key == 'group':
+                        value[key] = "'Unkown'"
+                    else:
+                        value[key] = "null"
                 else:
                     if key != 'id' and key != 'salesrank' and key != 'similar' and key != 'categories' and key != 'reviews':
                         value[key] = "'{}'".format(value[key])
@@ -186,10 +194,132 @@ def populate_database(host, port, keyspace, file_path):
     # -------------------------------------
 
 
+def getHelpfulReviews(asin, con):
+    cursor = con
+    return cursor.execute(f"SELECT * FROM teste.reviews WHERE product_asin='{asin}' ALLOW FILTERING ")
+
+
+def getSimilarsWithMostSalesrank(asin, con):
+    cursor = con
+    similars = cursor.execute(
+        f"SELECT asin_2 from similars WHERE asin_1='{asin}' ALLOW FILTERING")
+    salesrank = []
+    result = []
+    for similar in similars:
+        salesrank.append(cursor.execute(
+            f"SELECT * from products where asin='{similar.asin_2}' ALLOW FILTERING"))
+    for rank in salesrank:
+        for r in rank:
+            result.append(r)
+    return result
+
+
+def getProductAvgTimeline(asin, con):
+    cursor = con
+    rows = cursor.execute(
+        f"SELECT date,rating FROM reviews WHERE product_asin='{asin}' ALLOW FILTERING")
+    ratings = []
+    rows = sorted(rows, key=lambda k: k.date, reverse=True)
+    for index in range(0, len(rows)):
+        avg = 0
+        for j in range(0, index+1):
+            avg += rows[j].rating
+        avg = avg/(index+1)
+        ratings.append((rows[index].rating, avg))
+    return ratings
+
+
+def getTop10ProductsOfEachGroup(con):
+    cursor = con
+    return cursor.execute(f"SELECT * FROM teste.products GROUP BY group")
+
+
+def getTop10ProductsWithMostRatingAVG(con):
+    cursor = con
+    return cursor.execute(f"SELECT product_asin,avg(rating) FROM teste.reviews GROUP BY customer,product_asin LIMIT 10")
+
+
+def getTop5CategoriesWithMostRating(con):
+    cursor = con
+    return cursor.execute(f"SELECT group,asin,salesrank FROM teste.products GROUP BY group LIMIT 5")
+
+
+def get10CustomersWithMostReviewsForEachGroup(con):
+    cursor = con
+    return cursor.execute("SELECT customer,count(customer) FROM teste.reviews GROUP BY customer LIMIT 60 ALLOW FILTERING")
+
+
+def create_connection(host, port, keyspace):
+    cluster = Cluster([host], port=port)
+    cursor = cluster.connect(keyspace)
+    return cursor
+
+
 if __name__ == "__main__":
-    host = "localhost"
-    port = 9042
-    keyspace = "teste"
-    # data = read_file(file_path='data/amazon-meta.txt')
+    host = input('Host do Cassandra: ')
+    port = int(input("Porta do Cassandra: "))
+    keyspace = input('Nome do keyspace do Cassandra: ')
+    path = input('Path para o arquivo de entrada (unziped): ')
     create_schema(host, port, keyspace)
-    populate_database(host, port, keyspace, 'data/amazon-meta.txt')
+    populate_database(host, port, keyspace, path)
+
+    # a)
+    print("\nResultados da query 5 - a)")
+    con = create_connection(host, port, keyspace)
+    result = getHelpfulReviews('0738700797', con)
+    result = sorted(result, key=lambda k: k.rating, reverse=True)
+    print("Comentários mais úteis e com maior avaliação e mais úteis com menos avaliação:")
+    for product in result:
+        print(
+            f"| Customer: {product.customer} | Rating: {product.rating} | ASIN: {product.product_asin} |\n")
+    input("Pressiona qualquer tecla para a próxima query")
+
+    # b)
+    print('\nResultados da query 5 - b)')
+
+    con = create_connection(host, port, keyspace)
+    result = getSimilarsWithMostSalesrank('0738700797', con)
+    result = sorted(result, key=lambda k: k.salesrank, reverse=True)
+    for row in result:
+        print(f"{row}")
+    input("Pressiona qualquer tecla para a próxima query")
+
+    # c)
+    print('\nResultados da query 5 - c)')
+    con = create_connection(host, port, keyspace)
+    result = getProductAvgTimeline('0738700797', con)
+    print(result)
+    input("Pressiona qualquer tecla para a próxima query")
+
+    # d)
+    print("\nResultados da query 5 - d)")
+    con = create_connection(host, port, keyspace)
+    result = getTop10ProductsOfEachGroup(con)
+    for row in result:
+        print(f'Group: {row.group}, Top Product: {row.title}')
+    input("Pressiona qualquer tecla para a próxima query")
+
+    # e)
+    print("\nResultados da query 5 - e)")
+    print("10 produtos com melhores reviews:")
+    con = create_connection(host, port, keyspace)
+    result = getTop10ProductsWithMostRatingAVG(con)
+    for row in result:
+        print(f"ASIN:{row.product_asin} , AVG_review: {row.system_avg_rating}")
+    input("Pressiona qualquer tecla para a próxima query")
+
+    # f)
+    print("\nResultados da query 5 - f)")
+    print("5 grupos com melhor avaliação")
+    con = create_connection(host, port, keyspace)
+    result = getTop5CategoriesWithMostRating(con)
+    for row in result:
+        print(f"Group:{row.group}")
+    input("Pressiona qualquer tecla para a próxima query")
+
+    # g)
+    print("\nResultados da query 5 - g)")
+    con = create_connection(host, port, keyspace)
+    result = get10CustomersWithMostReviewsForEachGroup(con)
+    for row in result:
+        print(f"Customer: {row.customer}")
